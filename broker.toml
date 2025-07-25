@@ -51,7 +51,7 @@ max_fetch_retries = 4
 # Max concurrent locks
 #
 # Maximum number of concurrent proofs that can be processed at once
-max_concurrent_proofs = 4
+max_concurrent_proofs = 3
 # Maximum number of orders to concurrently work on pricing
 #
 # Used to limit pricing tasks spawned to prevent overwhelming the system
@@ -78,7 +78,7 @@ max_critical_task_retries = 10
 #
 # If enabled, all requests from clients not in the allow list are skipped.
 allow_client_addresses = [
-    "0xc2db89b2bd434ceac6c74fbc0b2ad3a280e66db0"# Bob
+    "0xc2db89b2bd434ceac6c74fbc0b2ad3a280e66db0",# Bob
     "0x2546c553d857d20658ece248f7c7d0861a240681",
     "0x734df7809c4ef94da037449c287166d114503198",
 ]
@@ -208,11 +208,11 @@ max_submission_attempts = 5
 # Enable Flashblocks for faster transaction confirmation (200ms on Base)
 enable_flashblocks = true
 # Flashblocks RPC URL for regular calls when enabled (Base Sepolia testnet)
-flashblocks_rpc_url = "http://localhost:8545"
+flashblocks_rpc_url = "http://192.168.22.110:8545"
 # Flashblocks WebSocket URL for event subscriptions when enabled
-flashblocks_ws_url = "ws://localhost:8546"
+flashblocks_ws_url = "ws://192.168.22.110:8545"
 # Fallback WebSocket RPC URL for subscriptions 
-ws_rpc_url = "ws://localhost:8546"
+ws_rpc_url = "ws://192.168.22.110:8545"
 
 [network.mempool]
 # Enable mempool monitoring for early order detection
