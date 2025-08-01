@@ -21,6 +21,7 @@ use alloy::{
     sol_types::SolCall,
 };
 use anyhow::{anyhow, Context, Result};
+use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::mpsc;
 use tokio::time::{interval, sleep};
 use tokio_util::sync::CancellationToken;
@@ -121,6 +122,7 @@ impl Default for MempoolConfig {
 }
 
 /// Monitors the mempool for new order submissions
+#[derive(Clone)]
 pub struct MempoolMonitor<P> {
     provider: Arc<P>,
     config: ConfigLock,
@@ -233,21 +235,35 @@ where
 
         trace!("Found {} pending transactions", pending_txs.len());
 
-        let mut processed_count = 0;
         let max_process = self.mempool_config.max_pending_tx_per_poll;
+        let txs_to_process: Vec<_> = pending_txs.into_iter().take(max_process).collect();
+        
+        // Process transactions in parallel using FuturesUnordered
+        let mut futures = FuturesUnordered::new();
+        
+        for tx in txs_to_process {
+            let self_clone = self.clone();
+            futures.push(async move {
+                self_clone.process_pending_transaction(tx).await
+            });
+        }
 
-        for tx in pending_txs.into_iter().take(max_process) {
-            match self.process_pending_transaction(tx).await {
+        let mut processed_count = 0;
+        let mut error_count = 0;
+        
+        // Process results as they complete
+        while let Some(result) = futures.next().await {
+            match result {
                 Ok(_) => processed_count += 1,
                 Err(e) => {
+                    error_count += 1;
                     debug!("Error processing pending transaction: {:?}", e);
-                    continue;
                 }
             }
         }
 
-        if processed_count > 0 {
-            debug!("Processed {} pending transactions", processed_count);
+        if processed_count > 0 || error_count > 0 {
+            debug!("Processed {} pending transactions ({} errors)", processed_count, error_count);
         }
 
         Ok(())
@@ -275,20 +291,33 @@ where
     async fn try_pending_transactions_rpc(&self) -> Result<Vec<Transaction>, anyhow::Error> {
         // This is a custom RPC call that may not be supported on all networks
         let client = self.provider.root().client();
-        let result: Result<Vec<Transaction>, _> = client
-            .request("eth_pendingTransactions", ())
-            .await
-            .map_err(|e| anyhow!("eth_pendingTransactions not supported: {}", e));
         
-        result
+        // Add timeout to prevent hanging on slow RPC nodes
+        let timeout_duration = Duration::from_secs(self.mempool_config.rpc_timeout_secs);
+        let result = tokio::time::timeout(timeout_duration, async {
+            let result: Result<Vec<Transaction>, _> = client
+                .request("eth_pendingTransactions", ())
+                .await
+                .map_err(|e| anyhow!("eth_pendingTransactions not supported: {}", e));
+            result
+        })
+        .await
+        .map_err(|_| anyhow!("eth_pendingTransactions timed out after {} seconds", self.mempool_config.rpc_timeout_secs))??;
+        
+        Ok(result)
     }
 
     /// Try to get transactions from pending block
     async fn try_pending_block_method(&self) -> Result<Vec<Transaction>, anyhow::Error> {
-        let pending_block = self.provider
-            .get_block_by_number(alloy::eips::BlockNumberOrTag::Pending)
-            .await
-            .context("Failed to get pending block")?;
+        let timeout_duration = Duration::from_secs(self.mempool_config.rpc_timeout_secs);
+        
+        let pending_block = tokio::time::timeout(
+            timeout_duration,
+            self.provider.get_block_by_number(alloy::eips::BlockNumberOrTag::Pending)
+        )
+        .await
+        .map_err(|_| anyhow!("Timeout getting pending block"))?
+        .context("Failed to get pending block")?;
 
         let Some(block) = pending_block else {
             return Ok(vec![]);
@@ -305,10 +334,18 @@ where
             }
         };
 
-        // Fetch full transaction details
-        let mut transactions = Vec::new();
+        // Fetch full transaction details in parallel
+        let mut futures = FuturesUnordered::new();
         for hash in tx_hashes.into_iter().take(self.mempool_config.max_pending_tx_per_poll) {
-            if let Ok(Some(tx)) = self.provider.get_transaction_by_hash(hash).await {
+            let provider = self.provider.clone();
+            futures.push(async move {
+                provider.get_transaction_by_hash(hash).await
+            });
+        }
+
+        let mut transactions = Vec::new();
+        while let Some(result) = futures.next().await {
+            if let Ok(Some(tx)) = result {
                 transactions.push(tx);
             }
         }
@@ -324,19 +361,37 @@ where
 
     /// Check for nonce changes to detect new transactions
     async fn check_nonce_changes(&self, last_nonces: &mut std::collections::HashMap<Address, u64>) -> Result<(), anyhow::Error> {
+        // Check nonces in parallel for faster detection
+        let mut futures = FuturesUnordered::new();
+        
         for address in &self.mempool_config.monitored_addresses {
-            let current_nonce = self.provider
-                .get_transaction_count(*address)
-                .pending()
-                .await
-                .context("Failed to get pending nonce")?;
+            let provider = self.provider.clone();
+            let addr = *address;
+            futures.push(async move {
+                let nonce = provider
+                    .get_transaction_count(addr)
+                    .pending()
+                    .await
+                    .context("Failed to get pending nonce")?;
+                Ok::<_, anyhow::Error>((addr, nonce))
+            });
+        }
 
-            let last_nonce = last_nonces.get(address).copied().unwrap_or(0);
-            
-            if current_nonce > last_nonce {
-                debug!("Detected nonce increase for {:x}: {} -> {}", address, last_nonce, current_nonce);
-                // Could trigger more targeted pending transaction fetching here
-                last_nonces.insert(*address, current_nonce);
+        // Collect results
+        while let Some(result) = futures.next().await {
+            match result {
+                Ok((address, current_nonce)) => {
+                    let last_nonce = last_nonces.get(&address).copied().unwrap_or(0);
+                    
+                    if current_nonce > last_nonce {
+                        debug!("Detected nonce increase for {:x}: {} -> {}", address, last_nonce, current_nonce);
+                        // Could trigger more targeted pending transaction fetching here
+                        last_nonces.insert(address, current_nonce);
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to check nonce: {:?}", e);
+                }
             }
         }
 

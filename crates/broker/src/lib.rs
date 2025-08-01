@@ -120,7 +120,7 @@ pub struct Args {
     /// RPC HTTP retry rate limit max retry
     ///
     /// From the `RetryBackoffLayer` of Alloy
-    #[clap(long, default_value_t = 10)]
+    #[clap(long, default_value_t = 50)]
     pub rpc_retry_max: u32,
 
     /// RPC HTTP retry backoff (in ms)
@@ -1157,3 +1157,4 @@ pub mod test_utils {
 
 #[cfg(test)]
 pub mod tests;
+
