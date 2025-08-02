@@ -4,40 +4,37 @@
 # This price is multiplied the number of mega-cycles (i.e. million RISC-V cycles) that the requested
 # execution took, as calculated by running the request in preflight. This is one of the inputs to
 # decide the minimum price to accept for a request.
-mcycle_price = "0.000000000000000001"
+mcycle_price = "0.000000000000001"
 # Mega-cycle price, denominated in the Boundless staking token.
 #
 # Similar to the mcycle_price option above. This is used to determine the minimum price to accept an
 # order when paid in staking tokens, as is the case for orders with an expired lock.
-mcycle_price_stake_token = "0.0001"
+mcycle_price_stake_token = "0.00001"
 # Optional priority requestor addresses that can bypass the mcycle limit and max input size limit.
 #
 # If enabled, the order will be preflighted without constraints.
-priority_requestor_addresses = [
-	"0x48268bE6235A23eb7b67356469362869D5d0293f",
-	"0x0466ACfc0F27bBA9fBB7A8508f576527e81E83Bd",
-]
+# priority_requestor_addresses = []
 # Estimated peak performance of the proving cluster, in kHz.
 #
 # Used to estimate proving capacity and accept only as much work as the prover can handle. Estimates
 # can be derived from benchmarking using Bento CLI or from data based on fulfilling market orders.
 # For more information, see https://docs.beboundless.xyz/provers/broker#benchmarking-bento
-peak_prove_khz = 4000
+peak_prove_khz = 400
 # Optional max cycles (in mcycles)
 #
 # Orders over this max_cycles will be skipped after preflight
-max_mcycle_limit = 19000000
+max_mcycle_limit = 8000
 # Max journal size in bytes
 #
 # Orders that produce a journal larger than this size in preflight will be skipped. Since journals
 # must be posted onchain to complete an order, an excessively large journal may prevent completion
 # of a request.
-max_journal_bytes = 100000000
+max_journal_bytes = 12000
 # Min seconds left before the deadline to consider bidding on a request.
 # 
 # If there is not enough time left before the deadline, the prover may not be able to complete
 # proving of the request and finalize the batch for publishing before expiration.
-min_deadline = 300
+min_deadline = 400
 # On startup, the number of blocks to look back for possible open orders.
 lookback_blocks = 300 # 300 blocks ~ 1 hour @ 12s block times
 # Max stake amount, denominated in the Boundless staking token.
@@ -45,13 +42,13 @@ lookback_blocks = 300 # 300 blocks ~ 1 hour @ 12s block times
 # Requests that require a higher stake than this will not be considered.
 max_stake = "5" # USDC
 # Max input / image file size allowed for downloading from request URLs.
-max_file_size = 2000_000_000
+max_file_size = 100_000_000
 # Max retries for fetching input / image contents from URLs
-max_fetch_retries = 4
+max_fetch_retries = 2
 # Max concurrent locks
 #
 # Maximum number of concurrent proofs that can be processed at once
-max_concurrent_proofs = 5
+max_concurrent_proofs = 0
 # Maximum number of orders to concurrently work on pricing
 #
 # Used to limit pricing tasks spawned to prevent overwhelming the system
@@ -62,26 +59,26 @@ max_concurrent_preflights = 8
 # - "random": Process orders in random order to distribute competition among provers (default)
 # - "observation_time": Process orders in the order they were observed (FIFO)
 # - "shortest_expiry": Process orders by shortest expiry first (earliest deadline)
-#order_pricing_priority = "random"
+order_pricing_priority = ""observation_tim"
 # Order commitment priority mode
 #
 # Determines how orders are prioritized when committing to prove them. Options:
 # - "random": Process orders in random order to distribute competition among provers (default)
 # - "shortest_expiry": Process orders by shortest expiry first (lock expiry for lock-and-fulfill orders, request expiry for others)
-#order_commitment_priority = "random"
+order_commitment_priority = "shortest_expiry"
 # Max critical task retries on recoverable failures.
 #
 # The broker service has a number of subtasks. Some are considered critical. If a task fails, it
 # will be retried, but after this number of retries, the process will exit.
-max_critical_task_retries = 10
+max_critical_task_retries = 12
 # Optional allow list for customer address.
 #
 # If enabled, all requests from clients not in the allow list are skipped.
 allow_client_addresses = [
     "0xc2db89b2bd434ceac6c74fbc0b2ad3a280e66db0",# Bob
     #"0x3ee7d9175ec8bb9e16e8fd3abdef5a354b247528",
-    "0x2546c553d857d20658ece248f7c7d0861a240681",
-    "0x734df7809c4ef94da037449c287166d114503198",
+    #"0x2546c553d857d20658ece248f7c7d0861a240681",
+    #"0x734df7809c4ef94da037449c287166d114503198",
 ]
 # Optional deny list for requestor address.
 #
@@ -92,7 +89,7 @@ allow_client_addresses = [
 # Optional additional gas to add to the transaction for lockinRequest, good
 # for increasing the priority if competing with multiple provers during the
 # same block
-lockin_priority_gas = 100_000_00
+lockin_priority_gas = 150
 # Optional balance warning threshold (in native token)
 #
 # If the submitter balance drops below this the broker will issue warning logs
@@ -174,16 +171,16 @@ proof_retry_sleep_ms = 500
 
 [batcher]
 # Max batch duration before publishing (in seconds)
-batch_max_time = 1000
+batch_max_time = 800
 # Batch size (in proofs) before publishing
 min_batch_size = 1
 # Batch blocktime buffer
 #
 # Number of seconds before the lowest block deadline in the order batch
 # to flush the batch. This should be approximately snark_proving_time * 2
-block_deadline_buffer_secs = 180
+block_deadline_buffer_secs = 150
 # Timeout, in seconds for transaction confirmations
-txn_timeout = 45
+txn_timeout = 75
 # Use the single TXN submission that batches submit_merkle / fulfill_batch into
 #
 # A single transaction. Requires the `submitRootAndFulfill` method
